@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestión de Almacén</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- SheetJS (XLSX) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#095186',
+                            800: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        input, select, button, textarea {
+            font-size: 16px !important; /* Evita zoom automático en navegadores móviles */
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col text-slate-800 antialiased font-sans">
+
+    <!-- Header Principal -->
+    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-30">
+        <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-brand-600 p-2 rounded-xl text-white shadow-sm">
+                    <i data-lucide="boxes" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-base font-bold leading-tight sm:text-lg">Control de Almacén</h1>
+                    <p class="text-[11px] text-slate-400">Entradas, Salidas e Inventario</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-2">
+                <button onclick="cargarDemoData()" title="Cargar Datos de Prueba" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-xl border border-slate-700 transition flex items-center gap-1.5 active:scale-95">
+                    <i data-lucide="database" class="w-3.5 h-3.5 text-amber-400"></i>
+                    <span class="hidden sm:inline font-medium">Demo</span>
+                </button>
+                <button onclick="limpiarTodo()" title="Borrar Registros" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-red-400 p-2 rounded-xl border border-slate-700 transition active:scale-95">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Notificación Toast -->
+    <div id="toast" class="fixed top-16 left-1/2 transform -translate-x-1/2 z-50 transition-all duration-300 opacity-0 pointer-events-none w-11/12 max-w-md">
+        <div id="toast-content" class="bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center space-x-3">
+            <i id="toast-icon" data-lucide="check-circle-2" class="w-5 h-5 flex-shrink-0"></i>
+            <span id="toast-message" class="text-sm font-medium flex-1">Operación realizada con éxito</span>
+        </div>
+    </div>
+
+    <!-- Contenedor Principal (Aumentado pb-32 en móviles para evitar que el menú inferior tape los botones) -->
+    <main class="max-w-5xl mx-auto w-full px-4 pt-4 pb-32 md:pb-12 flex-1">
+
+        <!-- NAVEGACIÓN EN ESCRITORIO -->
+        <div class="mb-4 bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200 hidden md:flex space-x-1 overflow-x-auto no-scrollbar">
+            <button onclick="switchTab('salidas')" id="tab-btn-salidas" class="tab-btn flex-1 py-2.5 px-3 rounded-xl font-semibold text-xs lg:text-sm transition flex items-center justify-center gap-1.5 bg-brand-600 text-white shadow-sm whitespace-nowrap">
+                <i data-lucide="arrow-up-right" class="w-4 h-4 text-emerald-300"></i>
+                Salida / Despacho
+            </button>
+            <button onclick="switchTab('entradas')" id="tab-btn-entradas" class="tab-btn flex-1 py-2.5 px-3 rounded-xl font-semibold text-xs lg:text-sm transition flex items-center justify-center gap-1.5 text-slate-600 hover:bg-slate-100 whitespace-nowrap">
+                <i data-lucide="arrow-down-left" class="w-4 h-4 text-blue-500"></i>
+                Entrada / Recepción
+            </button>
+            <button onclick="switchTab('stock')" id="tab-btn-stock" class="tab-btn flex-1 py-2.5 px-3 rounded-xl font-semibold text-xs lg:text-sm transition flex items-center justify-center gap-1.5 text-slate-600 hover:bg-slate-100 whitespace-nowrap">
+                <i data-lucide="package" class="w-4 h-4 text-purple-500"></i>
+                Stock Actual
+            </button>
+            <button onclick="switchTab('reportes')" id="tab-btn-reportes" class="tab-btn flex-1 py-2.5 px-3 rounded-xl font-semibold text-xs lg:text-sm transition flex items-center justify-center gap-1.5 text-slate-600 hover:bg-slate-100 whitespace-nowrap">
+                <i data-lucide="bar-chart-3" class="w-4 h-4 text-amber-500"></i>
+                Reportes y Excel
+            </button>
+        </div>
+
+        <!-- ================= PESTAÑA 1: SALIDA / DESPACHO A TRABAJADOR ================= -->
+        <section id="sec-salidas" class="tab-content block space-y-4">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+                <div class="border-b border-slate-100 pb-3 mb-4 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <i data-lucide="truck" class="w-5 h-5 text-emerald-600"></i>
+                            Nuevo Despacho a Trabajador
+                        </h2>
+                        <p class="text-xs text-slate-500">Entrega uno o varios materiales a un trabajador</p>
+                    </div>
+                </div>
+
+                <form onsubmit="guardarDespacho(event)" class="space-y-4">
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <!-- Trabajador -->
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                                Trabajador <span class="text-red-500">*</span>
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                    <i data-lucide="user" class="w-5 h-5"></i>
+                                </div>
+                                <select id="salida-trabajador" required class="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-brand-500 focus:bg-white transition appearance-none">
+                                    <option value="" disabled selected>Seleccione trabajador...</option>
+                                </select>
+                                <div class="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                                    <i data-lucide="chevron-down" class="w-5 h-5"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fecha y Hora -->
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                                Fecha y Hora <span class="text-red-500">*</span>
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                    <i data-lucide="calendar" class="w-5 h-5"></i>
+                                </div>
+                                <input type="datetime-local" id="salida-fecha" required class="w-full pl-11 pr-3 py-3 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-brand-500 focus:bg-white transition">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel de selección de Materiales al Lote -->
+                    <div class="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200 space-y-3">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                            <i data-lucide="plus-circle" class="w-4 h-4 text-emerald-600"></i>
+                            Agregar Materiales al Despacho
+                        </label>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                            <div class="sm:col-span-6">
+                                <label class="block text-[11px] font-semibold text-slate-500 mb-1">Material</label>
+                                <select id="salida-material" class="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-brand-500">
+                                    <option value="" disabled selected>Seleccione material...</option>
+                                </select>
+                            </div>
+
+                            <div class="sm:col-span-4">
+                                <label class="block text-[11px] font-semibold text-slate-500 mb-1">Cantidad</label>
+                                <div class="relative flex items-center">
+                                    <button type="button" onclick="adjustSalidaQty(-1)" class="absolute left-1 bg-slate-200 hover:bg-slate-300 text-slate-700 w-8 h-8 rounded-lg font-bold flex items-center justify-center active:scale-95 transition">-</button>
+                                    <input type="number" id="salida-cantidad" min="1" value="1" class="w-full text-center py-2.5 px-8 bg-white border border-slate-300 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-brand-500">
+                                    <button type="button" onclick="adjustSalidaQty(1)" class="absolute right-1 bg-slate-200 hover:bg-slate-300 text-slate-700 w-8 h-8 rounded-lg font-bold flex items-center justify-center active:scale-95 transition">+</button>
+                                </div>
+                            </div>
+
+                            <div class="sm:col-span-2">
+                                <button type="button" onclick="agregarItemSalida()" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2.5 px-3 rounded-xl shadow-sm transition flex items-center justify-center gap-1 text-sm active:scale-95">
+                                    <i data-lucide="plus" class="w-4 h-4"></i>
+                                    <span>Agregar</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Lista Temporal -->
+                        <div class="mt-3 border-t border-slate-200 pt-3">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-xs font-bold text-slate-600 uppercase">Lista de Materiales en este envío</span>
+                                <span id="lote-salida-count" class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">0 ítems</span>
+                            </div>
+                            <div id="lote-salida-items" class="space-y-2 min-h-[50px]">
+                                <!-- Dinámico -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Observaciones -->
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                            Observación / Nota (Opcional)
+                        </label>
+                        <input type="text" id="salida-observacion" placeholder="Ej: Para mantenimiento de unidad o turno mañana" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-normal text-slate-800 text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white transition">
+                    </div>
+
+                    <!-- Botón Guardar -->
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl shadow-md transition flex items-center justify-center gap-2 text-base active:scale-[0.98]">
+                        <i data-lucide="save" class="w-5 h-5"></i>
+                        Registrar Despacho
+                    </button>
+                </form>
+            </div>
+            <!-- Espaciador de seguridad para scroll móvil -->
+            <div class="h-6 md:hidden"></div>
+        </section>
+
+        <!-- ================= PESTAÑA 2: ENTRADA / RECEPCIÓN DE STOCK ================= -->
+        <section id="sec-entradas" class="tab-content hidden space-y-4">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+                <div class="border-b border-slate-100 pb-3 mb-4 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <i data-lucide="arrow-down-left" class="w-5 h-5 text-blue-600"></i>
+                            Ingreso de Stock a Almacén
+                        </h2>
+                        <p class="text-xs text-slate-500">Registra la llegada de mercadería o compras</p>
+                    </div>
+                </div>
+
+                <form onsubmit="guardarEntrada(event)" class="space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                                Guía / Proveedor / Referencia
+                            </label>
+                            <input type="text" id="entrada-proveedor" placeholder="Ej: Compra Mensual / Guía N° 1024" class="w-full px-3 py-3 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                                Fecha y Hora <span class="text-red-500">*</span>
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                    <i data-lucide="calendar" class="w-5 h-5"></i>
+                                </div>
+                                <input type="datetime-local" id="entrada-fecha" required class="w-full pl-11 pr-3 py-3 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white transition">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Lote de Entradas -->
+                    <div class="bg-blue-50/60 p-3.5 sm:p-4 rounded-2xl border border-blue-100 space-y-3">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-blue-900 flex items-center gap-1.5">
+                            <i data-lucide="plus-circle" class="w-4 h-4 text-blue-600"></i>
+                            Agregar Materiales Ingresados
+                        </label>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                            <div class="sm:col-span-6">
+                                <label class="block text-[11px] font-semibold text-slate-500 mb-1">Material Recibido</label>
+                                <select id="entrada-material" class="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500">
+                                    <option value="" disabled selected>Seleccione material...</option>
+                                </select>
+                            </div>
+
+                            <div class="sm:col-span-4">
+                                <label class="block text-[11px] font-semibold text-slate-500 mb-1">Cantidad Recibida</label>
+                                <div class="relative flex items-center">
+                                    <button type="button" onclick="adjustEntradaQty(-1)" class="absolute left-1 bg-slate-200 hover:bg-slate-300 text-slate-700 w-8 h-8 rounded-lg font-bold flex items-center justify-center active:scale-95 transition">-</button>
+                                    <input type="number" id="entrada-cantidad" min="1" value="1" class="w-full text-center py-2.5 px-8 bg-white border border-slate-300 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-blue-500">
+                                    <button type="button" onclick="adjustEntradaQty(1)" class="absolute right-1 bg-slate-200 hover:bg-slate-300 text-slate-700 w-8 h-8 rounded-lg font-bold flex items-center justify-center active:scale-95 transition">+</button>
+                                </div>
+                            </div>
+
+                            <div class="sm:col-span-2">
+                                <button type="button" onclick="agregarItemEntrada()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-3 rounded-xl shadow-sm transition flex items-center justify-center gap-1 text-sm active:scale-95">
+                                    <i data-lucide="plus" class="w-4 h-4"></i>
+                                    <span>Agregar</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Lista Lote Entradas -->
+                        <div class="mt-3 border-t border-blue-200/60 pt-3">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-xs font-bold text-blue-900 uppercase">Materiales a Ingresar a Inventario</span>
+                                <span id="lote-entrada-count" class="bg-blue-200 text-blue-900 text-[10px] font-bold px-2 py-0.5 rounded-full">0 ítems</span>
+                            </div>
+                            <div id="lote-entrada-items" class="space-y-2 min-h-[50px]">
+                                <!-- Dinámico -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Observaciones -->
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                            Observación (Opcional)
+                        </label>
+                        <input type="text" id="entrada-observacion" placeholder="Ej: Recepción con factura / estado nuevo" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-normal text-slate-800 text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition">
+                    </div>
+
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 px-4 rounded-xl shadow-md transition flex items-center justify-center gap-2 text-base active:scale-[0.98]">
+                        <i data-lucide="arrow-down-circle" class="w-5 h-5"></i>
+                        Registrar Entrada de Stock
+                    </button>
+                </form>
+            </div>
+            <!-- Espaciador de seguridad para scroll móvil -->
+            <div class="h-6 md:hidden"></div>
+        </section>
+
+        <!-- ================= PESTAÑA 3: INVENTARIO / STOCK ACTUAL ================= -->
+        <section id="sec-stock" class="tab-content hidden space-y-4">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4 mb-4">
+                    <div>
+                        <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <i data-lucide="package" class="w-5 h-5 text-purple-600"></i>
+                            Stock Actual de Materiales
+                        </h2>
+                        <p class="text-xs text-slate-500">Disponibilidad en tiempo real (Entradas - Salidas)</p>
+                    </div>
+                    <div class="relative w-full sm:w-64">
+                        <input type="text" id="stock-buscar" oninput="renderStock()" placeholder="Buscar material..." class="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-purple-500">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+                    </div>
+                </div>
+
+                <!-- Tarjetas de Materiales -->
+                <div id="stock-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <!-- Dinámico -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= PESTAÑA 4: REPORTES Y EXPORTACIÓN A EXCEL ================= -->
+        <section id="sec-reportes" class="tab-content hidden space-y-4">
+            
+            <!-- Panel de Filtros -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6 space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                    <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <i data-lucide="filter" class="w-5 h-5 text-amber-500"></i>
+                        Filtros para Consulta de Registro
+                    </h2>
+                    <button onclick="exportarExcel()" class="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2.5 rounded-xl font-bold shadow-sm transition flex items-center justify-center gap-2 text-xs sm:text-sm active:scale-95">
+                        <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                        Descargar Excel (.xlsx)
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <!-- Filtro Trabajador -->
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            Trabajador
+                        </label>
+                        <select id="filtro-trabajador" onchange="actualizarReporte()" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-brand-500">
+                            <option value="TODOS">-- Todos los Trabajadores --</option>
+                        </select>
+                    </div>
+
+                    <!-- Período de Fecha -->
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            Período / Rango
+                        </label>
+                        <select id="filtro-periodo" onchange="cambiarPeriodoFiltro()" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-brand-500">
+                            <option value="todos">Todo el Historial</option>
+                            <option value="hoy">Hoy</option>
+                            <option value="semana">Esta Semana</option>
+                            <option value="mes">Este Mes</option>
+                            <option value="2meses">Últimos 2 Meses</option>
+                            <option value="ano">Este Año</option>
+                            <option value="custom">Rango Personalizado...</option>
+                        </select>
+                    </div>
+
+                    <!-- Tipo de Movimiento -->
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            Tipo de Registro
+                        </label>
+                        <select id="filtro-tipo" onchange="actualizarReporte()" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-brand-500">
+                            <option value="TODOS">Todos los Registros</option>
+                            <option value="SALIDA">Solo Salidas a Trabajadores</option>
+                            <option value="ENTRADA">Solo Entradas de Stock</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Fechas Personalizadas -->
+                <div id="row-fechas-custom" class="hidden grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-500 mb-1">Fecha Inicio</label>
+                        <input type="date" id="filtro-fecha-inicio" onchange="actualizarReporte()" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-500 mb-1">Fecha Fin</label>
+                        <input type="date" id="filtro-fecha-fin" onchange="actualizarReporte()" class="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resumen KPIs -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-3">
+                    <div class="p-2.5 bg-emerald-100 text-emerald-800 rounded-xl">
+                        <i data-lucide="arrow-up-right" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase">Materiales Salidos</p>
+                        <p id="kpi-total-salidos" class="text-base font-bold text-slate-800">0</p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-3">
+                    <div class="p-2.5 bg-blue-100 text-blue-800 rounded-xl">
+                        <i data-lucide="arrow-down-left" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase">Stock Ingresado</p>
+                        <p id="kpi-total-ingresados" class="text-base font-bold text-slate-800">0</p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-3">
+                    <div class="p-2.5 bg-purple-100 text-purple-800 rounded-xl">
+                        <i data-lucide="clipboard-list" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase">Total Operaciones</p>
+                        <p id="kpi-total-operaciones" class="text-base font-bold text-slate-800">0</p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-3">
+                    <div class="p-2.5 bg-amber-100 text-amber-800 rounded-xl">
+                        <i data-lucide="user" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase">Trabajador</p>
+                        <p id="kpi-trabajador-sel" class="text-xs font-bold text-slate-800 truncate max-w-[90px]">TODOS</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Totalizado por Material -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+                <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2 mb-3">
+                    <i data-lucide="pie-chart" class="w-4 h-4 text-brand-600"></i>
+                    Total Retirado por Material en el Período
+                </h3>
+                <div id="reporte-desglose-materials" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                    <!-- Dinámico -->
+                </div>
+            </div>
+
+            <!-- Tabla de Registros -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+                <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2 mb-3">
+                    <i data-lucide="list" class="w-4 h-4 text-brand-600"></i>
+                    Detalle de Registros Filtrados
+                </h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs text-slate-600">
+                        <thead class="bg-slate-100 text-slate-700 uppercase font-bold border-b border-slate-200">
+                            <tr>
+                                <th class="p-3">Tipo</th>
+                                <th class="p-3">Fecha y Hora</th>
+                                <th class="p-3">Trabajador / Ref</th>
+                                <th class="p-3">Materiales Entregados / Recibidos</th>
+                                <th class="p-3 text-center">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-reporte-body" class="divide-y divide-slate-100">
+                            <!-- Dinámico -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Espaciador de seguridad para scroll móvil -->
+            <div class="h-6 md:hidden"></div>
+        </section>
+
+    </main>
+
+    <!-- BARRA INFERIOR DE NAVEGACIÓN EN MÓVIL -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-slate-400 border-t border-slate-800 z-40 flex justify-around p-1.5 shadow-lg">
+        <button onclick="switchTab('salidas')" id="mob-tab-salidas" class="flex flex-col items-center gap-0.5 text-emerald-400 font-medium text-[10px] py-1">
+            <i data-lucide="arrow-up-right" class="w-4 h-4"></i>
+            <span>Salida</span>
+        </button>
+        <button onclick="switchTab('entradas')" id="mob-tab-entradas" class="flex flex-col items-center gap-0.5 hover:text-white font-medium text-[10px] py-1">
+            <i data-lucide="arrow-down-left" class="w-4 h-4 text-blue-400"></i>
+            <span>Entrada</span>
+        </button>
+        <button onclick="switchTab('stock')" id="mob-tab-stock" class="flex flex-col items-center gap-0.5 hover:text-white font-medium text-[10px] py-1">
+            <i data-lucide="package" class="w-4 h-4 text-purple-400"></i>
+            <span>Stock</span>
+        </button>
+        <button onclick="switchTab('reportes')" id="mob-tab-reportes" class="flex flex-col items-center gap-0.5 hover:text-white font-medium text-[10px] py-1">
+            <i data-lucide="bar-chart-3" class="w-4 h-4 text-amber-400"></i>
+            <span>Reportes</span>
+        </button>
+    </nav>
+
+    <!-- SCRIPT DE LÓGICA COMPLETA -->
+    <script>
+        // --- MATERIALES Y TRABAJADORES EXACTOS SOLICITADOS ---
+        const MATERIALES = [
+            "Adblue Green",
+            "Caja Adblue Green",
+            "Llantas",
+            "Limpia parabrisas",
+            "Mamelucos",
+            "Guantes",
+            "Muelles",
+            "Silicona",
+            "Pernos de llantas",
+            "Refrigerante",
+            "Agilones",
+            "Cardan"
+        ];
+
+        const TRABAJADORES = [
+            "HERMAN",
+            "ROYER",
+            "CARRION",
+            "RUTERO",
+            "CHATO",
+            "ROJAS",
+            "LEO DAN",
+            "ISAIAS"
+        ];
+
+        // --- ESTADO Y DATOS ---
+        let registros = []; // Almacena tanto salidas como entradas
+        let loteSalidaTemp = [];
+        let loteEntradaTemp = [];
+
+        // --- INICIALIZACIÓN ---
+        window.onload = function() {
+            lucide.createIcons();
+            cargarLocalStorage();
+            setFechaHoraActuales();
+            poblarSelects();
+            renderLoteSalida();
+            renderLoteEntrada();
+            renderStock();
+            actualizarReporte();
+        };
+
+        function setFechaHoraActuales() {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            const iso = now.toISOString().slice(0, 16);
+            document.getElementById('salida-fecha').value = iso;
+            document.getElementById('entrada-fecha').value = iso;
+        }
+
+        function cargarLocalStorage() {
+            const guardado = localStorage.getItem('almacen_registros');
+            registros = guardado ? JSON.parse(guardado) : [];
+        }
+
+        function guardarLocalStorage() {
+            localStorage.setItem('almacen_registros', JSON.stringify(registros));
+        }
+
+        function poblarSelects() {
+            // Cargar Trabajadores
+            const selTrabSalida = document.getElementById('salida-trabajador');
+            const selTrabFiltro = document.getElementById('filtro-trabajador');
+
+            selTrabSalida.innerHTML = '<option value="" disabled selected>Seleccione trabajador...</option>';
+            selTrabFiltro.innerHTML = '<option value="TODOS">-- Todos los Trabajadores --</option>';
+
+            TRABAJADORES.forEach(t => {
+                selTrabSalida.innerHTML += `<option value="${t}">${t}</option>`;
+                selTrabFiltro.innerHTML += `<option value="${t}">${t}</option>`;
+            });
+
+            // Cargar Materiales
+            const selMatSalida = document.getElementById('salida-material');
+            const selMatEntrada = document.getElementById('entrada-material');
+
+            selMatSalida.innerHTML = '<option value="" disabled selected>Seleccione material...</option>';
+            selMatEntrada.innerHTML = '<option value="" disabled selected>Seleccione material...</option>';
+
+            MATERIALES.forEach(m => {
+                selMatSalida.innerHTML += `<option value="${m}">${m}</option>`;
+                selMatEntrada.innerHTML += `<option value="${m}">${m}</option>`;
+            });
+        }
+
+        // --- NAVEGACIÓN PESTAÑAS ---
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`sec-${tab}`).classList.remove('hidden');
+
+            // Desktop Buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-brand-600', 'text-white', 'shadow-sm');
+                btn.classList.add('text-slate-600', 'hover:bg-slate-100');
+            });
+            const btnActive = document.getElementById(`tab-btn-${tab}`);
+            if (btnActive) {
+                btnActive.classList.remove('text-slate-600', 'hover:bg-slate-100');
+                btnActive.classList.add('bg-brand-600', 'text-white', 'shadow-sm');
+            }
+
+            // Mobile Navigation
+            ['salidas', 'entradas', 'stock', 'reportes'].forEach(t => {
+                const mobBtn = document.getElementById(`mob-tab-${t}`);
+                if (mobBtn) {
+                    if (t === tab) {
+                        mobBtn.className = "flex flex-col items-center gap-0.5 text-emerald-400 font-medium text-[10px] py-1";
+                    } else {
+                        mobBtn.className = "flex flex-col items-center gap-0.5 text-slate-400 hover:text-white font-medium text-[10px] py-1";
+                    }
+                }
+            });
+
+            if (tab === 'stock') renderStock();
+            if (tab === 'reportes') actualizarReporte();
+        }
+
+        // --- LÓGICA LOTE SALIDAS ---
+        function adjustSalidaQty(delta) {
+            const el = document.getElementById('salida-cantidad');
+            let v = parseInt(el.value) || 1;
+            v += delta;
+            if (v < 1) v = 1;
+            el.value = v;
+        }
+
+        function agregarItemSalida() {
+            const matSel = document.getElementById('salida-material');
+            const material = matSel.value;
+            const cantidad = parseInt(document.getElementById('salida-cantidad').value) || 1;
+
+            if (!material) {
+                showToast("Por favor selecciona un material", "error");
+                return;
+            }
+
+            const idx = loteSalidaTemp.findIndex(i => i.material === material);
+            if (idx !== -1) {
+                loteSalidaTemp[idx].cantidad += cantidad;
+            } else {
+                loteSalidaTemp.push({ material, cantidad });
+            }
+
+            matSel.value = "";
+            document.getElementById('salida-cantidad').value = 1;
+            renderLoteSalida();
+            showToast(`Añadido: ${material} (${cantidad})`, "info");
+        }
+
+        function eliminarItemSalida(index) {
+            loteSalidaTemp.splice(index, 1);
+            renderLoteSalida();
+        }
+
+        function renderLoteSalida() {
+            const container = document.getElementById('lote-salida-items');
+            document.getElementById('lote-salida-count').innerText = `${loteSalidaTemp.length} ${loteSalidaTemp.length === 1 ? 'ítem' : 'ítems'}`;
+
+            if (loteSalidaTemp.length === 0) {
+                container.innerHTML = `<div class="text-center py-3 text-xs text-slate-400 italic bg-white rounded-xl border border-dashed border-slate-300">Ningún material agregado al despacho actual.</div>`;
+                return;
+            }
+
+            container.innerHTML = loteSalidaTemp.map((item, idx) => `
+                <div class="flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm text-xs">
+                    <div class="flex items-center gap-2">
+                        <span class="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-md">-${item.cantidad}</span>
+                        <span class="font-semibold text-slate-800">${item.material}</span>
+                    </div>
+                    <button type="button" onclick="eliminarItemSalida(${idx})" class="text-slate-400 hover:text-red-600 p-1 rounded transition">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            `).join('');
+
+            lucide.createIcons();
+        }
+
+        function guardarDespacho(e) {
+            e.preventDefault();
+            const trabajador = document.getElementById('salida-trabajador').value;
+            const fecha = document.getElementById('salida-fecha').value;
+            const observacion = document.getElementById('salida-observacion').value.trim();
+
+            if (!trabajador) {
+                showToast("Selecciona un trabajador", "error");
+                return;
+            }
+
+            if (loteSalidaTemp.length === 0) {
+                showToast("Añade al menos un material al despacho", "error");
+                return;
+            }
+
+            const nuevoRegistro = {
+                id: 'reg_' + Date.now(),
+                tipo: 'SALIDA',
+                trabajador,
+                fechaHora: fecha,
+                observacion,
+                items: [...loteSalidaTemp]
+            };
+
+            registros.unshift(nuevoRegistro);
+            guardarLocalStorage();
+
+            // Limpieza
+            loteSalidaTemp = [];
+            renderLoteSalida();
+            document.getElementById('salida-trabajador').value = "";
+            document.getElementById('salida-observacion').value = "";
+            setFechaHoraActuales();
+
+            showToast("¡Despacho registrado con éxito!", "success");
+            renderStock();
+            actualizarReporte();
+        }
+
+        // --- LÓGICA LOTE ENTRADAS ---
+        function adjustEntradaQty(delta) {
+            const el = document.getElementById('entrada-cantidad');
+            let v = parseInt(el.value) || 1;
+            v += delta;
+            if (v < 1) v = 1;
+            el.value = v;
+        }
+
+        function agregarItemEntrada() {
+            const matSel = document.getElementById('entrada-material');
+            const material = matSel.value;
+            const cantidad = parseInt(document.getElementById('entrada-cantidad').value) || 1;
+
+            if (!material) {
+                showToast("Por favor selecciona un material", "error");
+                return;
+            }
+
+            const idx = loteEntradaTemp.findIndex(i => i.material === material);
+            if (idx !== -1) {
+                loteEntradaTemp[idx].cantidad += cantidad;
+            } else {
+                loteEntradaTemp.push({ material, cantidad });
+            }
+
+            matSel.value = "";
+            document.getElementById('entrada-cantidad').value = 1;
+            renderLoteEntrada();
+            showToast(`Añadido a recepción: ${material} (${cantidad})`, "info");
+        }
+
+        function eliminarItemEntrada(index) {
+            loteEntradaTemp.splice(index, 1);
+            renderLoteEntrada();
+        }
+
+        function renderLoteEntrada() {
+            const container = document.getElementById('lote-entrada-items');
+            document.getElementById('lote-entrada-count').innerText = `${loteEntradaTemp.length} ${loteEntradaTemp.length === 1 ? 'ítem' : 'ítems'}`;
+
+            if (loteEntradaTemp.length === 0) {
+                container.innerHTML = `<div class="text-center py-3 text-xs text-slate-400 italic bg-white rounded-xl border border-dashed border-slate-300">Ningún material agregado al ingreso.</div>`;
+                return;
+            }
+
+            container.innerHTML = loteEntradaTemp.map((item, idx) => `
+                <div class="flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm text-xs">
+                    <div class="flex items-center gap-2">
+                        <span class="bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-md">+${item.cantidad}</span>
+                        <span class="font-semibold text-slate-800">${item.material}</span>
+                    </div>
+                    <button type="button" onclick="eliminarItemEntrada(${idx})" class="text-slate-400 hover:text-red-600 p-1 rounded transition">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            `).join('');
+
+            lucide.createIcons();
+        }
+
+        function guardarEntrada(e) {
+            e.preventDefault();
+            const proveedor = document.getElementById('entrada-proveedor').value.trim() || 'Recepción Almacén';
+            const fecha = document.getElementById('entrada-fecha').value;
+            const observacion = document.getElementById('entrada-observacion').value.trim();
+
+            if (loteEntradaTemp.length === 0) {
+                showToast("Añade al menos un material al ingreso", "error");
+                return;
+            }
+
+            const nuevoRegistro = {
+                id: 'reg_' + Date.now(),
+                tipo: 'ENTRADA',
+                trabajador: proveedor, // Campo reutilizado para proveedor/referencia
+                fechaHora: fecha,
+                observacion,
+                items: [...loteEntradaTemp]
+            };
+
+            registros.unshift(nuevoRegistro);
+            guardarLocalStorage();
+
+            // Limpieza
+            loteEntradaTemp = [];
+            renderLoteEntrada();
+            document.getElementById('entrada-proveedor').value = "";
+            document.getElementById('entrada-observacion').value = "";
+            setFechaHoraActuales();
+
+            showToast("¡Ingreso de stock guardado correctamente!", "success");
+            renderStock();
+            actualizarReporte();
+        }
+
+        // --- INVENTARIO Y STOCK EN TIEMPO REAL ---
+        function calcularStock() {
+            const map = {};
+            MATERIALES.forEach(m => {
+                map[m] = { entradas: 0, salidas: 0, disponible: 0 };
+            });
+
+            registros.forEach(r => {
+                (r.items || []).forEach(i => {
+                    if (!map[i.material]) map[i.material] = { entradas: 0, salidas: 0, disponible: 0 };
+                    if (r.tipo === 'ENTRADA') {
+                        map[i.material].entradas += i.cantidad;
+                    } else if (r.tipo === 'SALIDA') {
+                        map[i.material].salidas += i.cantidad;
+                    }
+                });
+            });
+
+            Object.keys(map).forEach(m => {
+                map[m].disponible = map[m].entradas - map[m].salidas;
+            });
+
+            return map;
+        }
+
+        function renderStock() {
+            const container = document.getElementById('stock-grid');
+            const buscar = (document.getElementById('stock-buscar')?.value || '').toLowerCase();
+            const stockMap = calcularStock();
+
+            const listaMat = MATERIALES.filter(m => m.toLowerCase().includes(buscar));
+
+            if (listaMat.length === 0) {
+                container.innerHTML = `<div class="col-span-full text-center py-8 text-slate-400 italic">Sin resultados</div>`;
+                return;
+            }
+
+            container.innerHTML = listaMat.map(m => {
+                const info = stockMap[m];
+                let estadoBadge = "bg-emerald-100 text-emerald-800 border-emerald-200";
+                let estadoText = "Disponible";
+
+                if (info.disponible <= 0) {
+                    estadoBadge = "bg-red-100 text-red-800 border-red-200";
+                    estadoText = "Agotado";
+                } else if (info.disponible <= 5) {
+                    estadoBadge = "bg-amber-100 text-amber-800 border-amber-200";
+                    estadoText = "Stock Bajo";
+                }
+
+                return `
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition">
+                    <div class="flex justify-between items-start mb-1">
+                        <h3 class="font-bold text-slate-900 text-sm">${m}</h3>
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border ${estadoBadge}">${estadoText}</span>
+                    </div>
+
+                    <div class="text-3xl font-black text-slate-900 my-2">
+                        ${info.disponible} <span class="text-xs font-medium text-slate-400">unid.</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 border-t border-slate-100 pt-2 text-xs">
+                        <div class="bg-blue-50/70 p-2 rounded-xl border border-blue-100">
+                            <span class="block text-[10px] font-bold uppercase text-blue-600">Entradas</span>
+                            <span class="font-bold text-blue-900">+${info.entradas}</span>
+                        </div>
+                        <div class="bg-emerald-50/70 p-2 rounded-xl border border-emerald-100">
+                            <span class="block text-[10px] font-bold uppercase text-emerald-600">Salidas</span>
+                            <span class="font-bold text-emerald-900">-${info.salidas}</span>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        // --- FILTROS DE REPORTES ---
+        function cambiarPeriodoFiltro() {
+            const val = document.getElementById('filtro-periodo').value;
+            const containerCustom = document.getElementById('row-fechas-custom');
+            if (val === 'custom') {
+                containerCustom.classList.remove('hidden');
+            } else {
+                containerCustom.classList.add('hidden');
+            }
+            actualizarReporte();
+        }
+
+        function obtenerRegistrosFiltrados() {
+            const trabajadorSel = document.getElementById('filtro-trabajador').value;
+            const periodoSel = document.getElementById('filtro-periodo').value;
+            const tipoSel = document.getElementById('filtro-tipo').value;
+
+            const hoy = new Date();
+            let inicio = null;
+            let fin = null;
+
+            if (periodoSel === 'hoy') {
+                inicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0, 0, 0);
+            } else if (periodoSel === 'semana') {
+                const day = hoy.getDay() || 7;
+                inicio = new Date(hoy);
+                inicio.setDate(hoy.getDate() - day + 1);
+                inicio.setHours(0,0,0,0);
+            } else if (periodoSel === 'mes') {
+                inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+            } else if (periodoSel === '2meses') {
+                inicio = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+            } else if (periodoSel === 'ano') {
+                inicio = new Date(hoy.getFullYear(), 0, 1);
+            } else if (periodoSel === 'custom') {
+                const fIni = document.getElementById('filtro-fecha-inicio').value;
+                const fFin = document.getElementById('filtro-fecha-fin').value;
+                if (fIni) inicio = new Date(fIni + 'T00:00:00');
+                if (fFin) fin = new Date(fFin + 'T23:59:59');
+            }
+
+            return registros.filter(r => {
+                // Filtro Trabajador
+                if (trabajadorSel !== 'TODOS' && r.trabajador !== trabajadorSel) {
+                    return false;
+                }
+
+                // Filtro Tipo
+                if (tipoSel !== 'TODOS' && r.tipo !== tipoSel) {
+                    return false;
+                }
+
+                // Filtro Fecha
+                if (inicio || fin) {
+                    const fechaReg = new Date(r.fechaHora);
+                    if (inicio && fechaReg < inicio) return false;
+                    if (fin && fechaReg > fin) return false;
+                }
+
+                return true;
+            });
+        }
+
+        function actualizarReporte() {
+            const filtrados = obtenerRegistrosFiltrados();
+            const trabajadorSel = document.getElementById('filtro-trabajador').value;
+
+            let totalSalidos = 0;
+            let totalIngresados = 0;
+            const desgloseMat = {};
+
+            filtrados.forEach(r => {
+                (r.items || []).forEach(item => {
+                    if (r.tipo === 'SALIDA') {
+                        totalSalidos += item.cantidad;
+                        desgloseMat[item.material] = (desgloseMat[item.material] || 0) + item.cantidad;
+                    } else if (r.tipo === 'ENTRADA') {
+                        totalIngresados += item.cantidad;
+                    }
+                });
+            });
+
+            // KPIs
+            document.getElementById('kpi-total-salidos').innerText = totalSalidos;
+            document.getElementById('kpi-total-ingresados').innerText = totalIngresados;
+            document.getElementById('kpi-total-operaciones').innerText = filtrados.length;
+            document.getElementById('kpi-trabajador-sel').innerText = trabajadorSel;
+
+            // Desglose
+            const containerDesglose = document.getElementById('reporte-desglose-materials');
+            const entries = Object.entries(desgloseMat);
+
+            if (entries.length === 0) {
+                containerDesglose.innerHTML = `<p class="text-xs text-slate-400 italic col-span-full">Sin retiradas de materiales en el período o trabajador seleccionado.</p>`;
+            } else {
+                containerDesglose.innerHTML = entries.map(([mat, cant]) => `
+                    <div class="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex justify-between items-center">
+                        <span class="text-xs font-semibold text-slate-700 truncate">${mat}</span>
+                        <span class="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-lg text-xs">${cant} unid.</span>
+                    </div>
+                `).join('');
+            }
+
+            // Tabla
+            const body = document.getElementById('tabla-reporte-body');
+
+            if (filtrados.length === 0) {
+                body.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400 italic">No se encontraron registros para los filtros aplicados.</td></tr>`;
+                return;
+            }
+
+            body.innerHTML = filtrados.map(r => {
+                const dObj = new Date(r.fechaHora);
+                const fechaStr = dObj.toLocaleDateString('es-PE') + ' ' + dObj.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+
+                const itemsStr = (r.items || []).map(i => 
+                    `<span class="inline-flex items-center gap-1 ${r.tipo === 'SALIDA' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-blue-50 text-blue-800 border-blue-200'} px-2 py-0.5 rounded-md text-[11px] font-semibold border mr-1 mb-1">
+                        <strong>${r.tipo === 'SALIDA' ? '-' : '+'}${i.cantidad}</strong> ${i.material}
+                    </span>`
+                ).join(' ');
+
+                const esSalida = r.tipo === 'SALIDA';
+
+                return `
+                <tr class="hover:bg-slate-50 transition">
+                    <td class="p-3 whitespace-nowrap">
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${esSalida ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'}">
+                            ${r.tipo}
+                        </span>
+                    </td>
+                    <td class="p-3 font-medium text-slate-800 whitespace-nowrap">${fechaStr}</td>
+                    <td class="p-3 font-bold text-slate-800 whitespace-nowrap">${r.trabajador}</td>
+                    <td class="p-3">${itemsStr} ${r.observacion ? `<p class="text-[11px] text-slate-400 italic mt-0.5">Obs: ${r.observacion}</p>` : ''}</td>
+                    <td class="p-3 text-center">
+                        <button onclick="eliminarRegistro('${r.id}')" class="text-slate-400 hover:text-red-600 p-1 rounded transition" title="Eliminar">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </td>
+                </tr>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        function eliminarRegistro(id) {
+            if (confirm("¿Estás seguro de que deseas eliminar este registro?")) {
+                registros = registros.filter(r => r.id !== id);
+                guardarLocalStorage();
+                renderStock();
+                actualizarReporte();
+                showToast("Registro eliminado", "info");
+            }
+        }
+
+        // --- EXPORTAR EXCEL CON SHEETJS (.xlsx) ---
+        function exportarExcel() {
+            const filtrados = obtenerRegistrosFiltrados();
+
+            if (filtrados.length === 0) {
+                showToast("No hay registros para exportar con el filtro actual", "error");
+                return;
+            }
+
+            const trabajadorSel = document.getElementById('filtro-trabajador').value;
+            const periodoSel = document.getElementById('filtro-periodo').options[document.getElementById('filtro-periodo').selectedIndex].text;
+
+            // -------------------------------------------------------------
+            // HOJA 1: RESUMEN TOTALES CONSOLIDADO POR MATERIAL Y TRABAJADOR
+            // -------------------------------------------------------------
+            const resumenMap = {}; // Clave: "Trabajador | Material"
+            let totalGeneralUnidades = 0;
+
+            filtrados.forEach(r => {
+                if (r.tipo === 'SALIDA') {
+                    (r.items || []).forEach(item => {
+                        const trab = r.trabajador || 'SIN TRABAJADOR';
+                        const mat = item.material;
+                        const key = `${trab}___${mat}`;
+
+                        if (!resumenMap[key]) {
+                            resumenMap[key] = {
+                                trabajador: trab,
+                                material: mat,
+                                cantidadTotal: 0
+                            };
+                        }
+                        resumenMap[key].cantidadTotal += item.cantidad;
+                        totalGeneralUnidades += item.cantidad;
+                    });
+                }
+            });
+
+            const filasResumen = Object.values(resumenMap).map((row, idx) => ({
+                'N°': idx + 1,
+                'Trabajador': row.trabajador,
+                'Material': row.material,
+                'Cantidad Total Llevada en Período': row.cantidadTotal,
+                'Período Evaluado': periodoSel
+            }));
+
+            // Fila de Total General al final del Resumen
+            if (filasResumen.length > 0) {
+                filasResumen.push({
+                    'N°': '',
+                    'Trabajador': 'TOTAL GENERAL',
+                    'Material': 'TODOS LOS MATERIALES',
+                    'Cantidad Total Llevada en Período': totalGeneralUnidades,
+                    'Período Evaluado': periodoSel
+                });
+            } else {
+                filasResumen.push({
+                    'N°': 1,
+                    'Trabajador': trabajadorSel,
+                    'Material': 'Sin salidas registradas en este período',
+                    'Cantidad Total Llevada en Período': 0,
+                    'Período Evaluado': periodoSel
+                });
+            }
+
+            // -------------------------------------------------------------
+            // HOJA 2: DETALLE DÍA POR DÍA DE SALIDAS Y DESPACHOS
+            // -------------------------------------------------------------
+            const filasDetalleSalidas = [];
+            let nroSalida = 1;
+
+            filtrados.filter(r => r.tipo === 'SALIDA').forEach(r => {
+                const dObj = new Date(r.fechaHora);
+                (r.items || []).forEach(item => {
+                    filasDetalleSalidas.push({
+                        'N°': nroSalida++,
+                        'Fecha': dObj.toLocaleDateString('es-PE'),
+                        'Hora': dObj.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+                        'Trabajador': r.trabajador,
+                        'Material Entregado': item.material,
+                        'Cantidad': item.cantidad,
+                        'Observación / Nota': r.observacion || ''
+                    });
+                });
+            });
+
+            // -------------------------------------------------------------
+            // HOJA 3: DETALLE DE ENTRADAS Y RECEPCIÓN DE STOCK
+            // -------------------------------------------------------------
+            const filasDetalleEntradas = [];
+            let nroEntrada = 1;
+
+            filtrados.filter(r => r.tipo === 'ENTRADA').forEach(r => {
+                const dObj = new Date(r.fechaHora);
+                (r.items || []).forEach(item => {
+                    filasDetalleEntradas.push({
+                        'N°': nroEntrada++,
+                        'Fecha': dObj.toLocaleDateString('es-PE'),
+                        'Hora': dObj.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+                        'Proveedor / Referencia': r.trabajador,
+                        'Material Ingresado': item.material,
+                        'Cantidad Recibida': item.cantidad,
+                        'Observación / Nota': r.observacion || ''
+                    });
+                });
+            });
+
+            // -------------------------------------------------------------
+            // HOJA 4: STOCK ACTUAL DISPONIBLE EN ALMACÉN
+            // -------------------------------------------------------------
+            const stockCalculado = calcularStock();
+            const filasStockActual = MATERIALES.map((m, idx) => ({
+                'N°': idx + 1,
+                'Material': m,
+                'Total Entradas Históricas': stockCalculado[m].entradas,
+                'Total Salidas Históricas': stockCalculado[m].salidas,
+                'Stock Actual Disponible': stockCalculado[m].disponible
+            }));
+
+            // Crear Libro de Excel con SheetJS
+            const workbook = XLSX.utils.book_new();
+
+            // 1. Hoja Resumen Consolidado (Total acumulado por trabajador y material)
+            const wsResumen = XLSX.utils.json_to_sheet(filasResumen);
+            wsResumen['!cols'] = [{ wch: 5 }, { wch: 20 }, { wch: 25 }, { wch: 32 }, { wch: 20 }];
+            XLSX.utils.book_append_sheet(workbook, wsResumen, "Resumen Totales");
+
+            // 2. Hoja Detalle Salidas Día por Día
+            const wsDetalle = XLSX.utils.json_to_sheet(filasDetalleSalidas.length > 0 ? filasDetalleSalidas : [{'Mensaje': 'Sin registros de salida en este rango'}]);
+            wsDetalle['!cols'] = [{ wch: 5 }, { wch: 12 }, { wch: 10 }, { wch: 20 }, { wch: 25 }, { wch: 10 }, { wch: 30 }];
+            XLSX.utils.book_append_sheet(workbook, wsDetalle, "Detalle Salidas");
+
+            // 3. Hoja Entradas de Stock
+            const wsEntradas = XLSX.utils.json_to_sheet(filasDetalleEntradas.length > 0 ? filasDetalleEntradas : [{'Mensaje': 'Sin ingresos registrados en este rango'}]);
+            wsEntradas['!cols'] = [{ wch: 5 }, { wch: 12 }, { wch: 10 }, { wch: 25 }, { wch: 25 }, { wch: 18 }, { wch: 30 }];
+            XLSX.utils.book_append_sheet(workbook, wsEntradas, "Entradas Stock");
+
+            // 4. Hoja Inventario Actual
+            const wsStock = XLSX.utils.json_to_sheet(filasStockActual);
+            wsStock['!cols'] = [{ wch: 5 }, { wch: 25 }, { wch: 22 }, { wch: 22 }, { wch: 22 }];
+            XLSX.utils.book_append_sheet(workbook, wsStock, "Stock Disponible");
+
+            // Descargar archivo Excel
+            const hoyStr = new Date().toISOString().slice(0, 10);
+            const nombreTrabajadorNom = trabajadorSel === 'TODOS' ? 'Todos_Trabajadores' : trabajadorSel.replace(/\s+/g, '_');
+            XLSX.writeFile(workbook, `Reporte_Almacen_${nombreTrabajadorNom}_${hoyStr}.xlsx`);
+
+            showToast("Excel generado con resumen consolidado por material", "success");
+        }
+
+        // --- UTILIDADES TOAST Y DEMO ---
+        function showToast(msg, type = "success") {
+            const toast = document.getElementById('toast');
+            const content = document.getElementById('toast-content');
+            const msgEl = document.getElementById('toast-message');
+
+            msgEl.innerText = msg;
+
+            if (type === "error") {
+                content.className = "bg-red-600 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center space-x-3";
+            } else if (type === "info") {
+                content.className = "bg-slate-800 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center space-x-3";
+            } else {
+                content.className = "bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center space-x-3";
+            }
+
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function cargarDemoData() {
+            if (registros.length > 0 && !confirm("Se cargarán datos de ejemplo. ¿Deseas continuar?")) {
+                return;
+            }
+
+            const hoy = Date.now();
+            const demo = [
+                {
+                    id: 'reg_demo_1',
+                    tipo: 'ENTRADA',
+                    trabajador: 'Distribuidora Central SAC',
+                    fechaHora: new Date(hoy - 86400000 * 10).toISOString().slice(0,16),
+                    observacion: 'Compra mensual de llantas y accesorios',
+                    items: [
+                        { material: 'Llantas', cantidad: 60 },
+                        { material: 'Pernos de llantas', cantidad: 120 },
+                        { material: 'Mamelucos', cantidad: 30 }
+                    ]
+                },
+                {
+                    id: 'reg_demo_2',
+                    tipo: 'ENTRADA',
+                    trabajador: 'Lubricantes Perú EIRL',
+                    fechaHora: new Date(hoy - 86400000 * 7).toISOString().slice(0,16),
+                    observacion: 'Lote refrigerante y Adblue',
+                    items: [
+                        { material: 'Adblue Green', cantidad: 40 },
+                        { material: 'Refrigerante', cantidad: 25 }
+                    ]
+                },
+                {
+                    id: 'reg_demo_3',
+                    tipo: 'SALIDA',
+                    trabajador: 'ISAIAS',
+                    fechaHora: new Date(hoy - 86400000 * 3).toISOString().slice(0,16),
+                    observacion: 'Mantenimiento de unidad asignada',
+                    items: [
+                        { material: 'Llantas', cantidad: 2 },
+                        { material: 'Pernos de llantas', cantidad: 10 },
+                        { material: 'Mamelucos', cantidad: 1 }
+                    ]
+                },
+                {
+                    id: 'reg_demo_4',
+                    tipo: 'SALIDA',
+                    trabajador: 'HERMAN',
+                    fechaHora: new Date(hoy - 86400000 * 1).toISOString().slice(0,16),
+                    observacion: 'Salida de turno',
+                    items: [
+                        { material: 'Guantes', cantidad: 2 },
+                        { material: 'Limpia parabrisas', cantidad: 1 }
+                    ]
+                }
+            ];
+
+            registros = [...demo, ...registros];
+            guardarLocalStorage();
+            renderStock();
+            actualizarReporte();
+            showToast("Datos de prueba cargados", "success");
+        }
+
+        function limpiarTodo() {
+            if (confirm("¿Estás seguro de que deseas BORRAR TODOS los registros del almacén?")) {
+                registros = [];
+                guardarLocalStorage();
+                renderStock();
+                actualizarReporte();
+                showToast("Se borraron todos los registros", "info");
+            }
+        }
+    </script>
+</body>
+</html>
